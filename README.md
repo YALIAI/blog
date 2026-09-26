@@ -1,6 +1,6 @@
 # 自动驾驶笔记
 
-Yang Xie 的自动驾驶学习博客。静态 HTML / CSS / JavaScript，可直接由 GitHub Pages 托管，无需构建工具。
+Yali Nie 的自动驾驶学习博客。静态 HTML / CSS / JavaScript，可直接由 GitHub Pages 托管，无需构建工具。
 
 ## 本地预览
 
@@ -13,6 +13,7 @@ python3 -m http.server 8000
 ## 更新内容
 
 - 在 根目录增加 HTML 文章，并在 `index.html` 的“最近的笔记”中加上入口。
+- 在 `index.html` 的“技术动态”区域维护新闻来源链接。
 - 在 `site.js` 的 `resources` 数组中增加资料。`category` 可选 `datasets`、`perception`、`simulation`、`courses`。
 - 修改 `style.css` 调整样式。
 
