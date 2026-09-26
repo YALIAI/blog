@@ -1,0 +1,13 @@
+const resources = [
+  {category:'datasets',label:'数据集',title:'KITTI Vision Benchmark',description:'相机、LiDAR 与标定资料；适合先练投影和 3D 检测。',url:'https://www.cvlibs.net/datasets/kitti/'},
+  {category:'datasets',label:'数据集',title:'nuScenes 与 devkit 教程',description:'多相机、LiDAR 与雷达数据；先用 mini split 熟悉格式。',url:'https://www.nuscenes.org/tutorials/nuscenes_tutorial.html'},
+  {category:'datasets',label:'数据集',title:'Waymo Open Dataset',description:'大规模感知与运动数据；下载前先阅读使用条款。',url:'https://waymo.com/open/'},
+  {category:'datasets',label:'数据集',title:'Argoverse 2 User Guide',description:'传感器、地图和轨迹预测数据的官方使用指南。',url:'https://argoverse.github.io/user-guide/'},
+  {category:'perception',label:'感知工具',title:'OpenPCDet',description:'LiDAR 3D 目标检测工具箱，包含模型配置与入门文档。',url:'https://github.com/open-mmlab/OpenPCDet'},
+  {category:'perception',label:'感知工具',title:'MMDetection3D',description:'3D 检测与多模态感知框架；看模型配置和数据格式。',url:'https://mmdetection3d.readthedocs.io/en/latest/'},
+  {category:'simulation',label:'仿真与系统',title:'CARLA Simulator',description:'生成相机、LiDAR 和驾驶场景；安装时留意文档对应版本。',url:'https://carla.readthedocs.io/'},
+  {category:'simulation',label:'仿真与系统',title:'Autoware Documentation',description:'开源自动驾驶软件栈的架构、模块与部署文档。',url:'https://docs.autoware.org/main/home/'},
+  {category:'courses',label:'课程',title:'University of Toronto · Self-Driving Cars',description:'从定位、感知到规划的课程体系；用于建立完整概念框架。',url:'https://www.coursera.org/specializations/self-driving-cars/'}
+];
+const list=document.querySelector('#resource-list');
+if(list){const render=(filter)=>{list.replaceChildren();for(const item of resources.filter(x=>filter==='all'||x.category===filter)){const a=document.createElement('a');a.className='resource';a.href=item.url;a.target='_blank';a.rel='noopener noreferrer';const tag=document.createElement('span');tag.className='resource-tag';tag.textContent=item.label;const content=document.createElement('div');content.className='resource-content';const title=document.createElement('h3');title.textContent=item.title;const desc=document.createElement('p');desc.textContent=item.description;content.append(title,desc);const arrow=document.createElement('span');arrow.className='resource-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent='↗';a.append(tag,content,arrow);list.append(a)}};render('all');document.querySelector('#resource-count').textContent=`${resources.length.toString().padStart(2,'0')} 项`;document.querySelectorAll('[data-filter]').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('[data-filter]').forEach(b=>{b.classList.toggle('selected',b===button);b.setAttribute('aria-pressed',String(b===button))});render(button.dataset.filter)}))}document.querySelectorAll('#year').forEach(e=>e.textContent=new Date().getFullYear());

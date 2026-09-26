@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="Yang Xie 的自动驾驶技术笔记：感知、定位、数据集、仿真和工程实践。">
+  <title>自动驾驶笔记 · Yang Xie</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header"><div class="wrap header-inner"><a class="brand" href="./"><span class="brand-mark">YX<span class="brand-dot">.</span></span><span>自动驾驶笔记</span></a><nav aria-label="主导航"><a class="active" href="./">首页</a><a href="#notes">笔记</a><a href="#resources">资料</a><a href="https://github.com/YALIAI" target="_blank" rel="noopener noreferrer">GitHub ↗</a></nav></div></header>
+  <main>
+    <section class="intro wrap"><div class="eyebrow"><span class="line"></span> YANG XIE / AUTONOMOUS DRIVING</div><h1>从传感器数据，<br><em>走向可运行的系统。</em></h1><p>记录自动驾驶感知与工程实践的学习过程。先弄懂坐标系、标定和数据，再把模型接进仿真与真实流水线。</p><div class="intro-meta"><span>📍 Göteborg, Sweden</span><span>感知 · C++ · 深度学习</span></div></section>
+    <section class="section wrap" id="notes"><div class="section-title"><div><span class="section-kicker">01 / NOTES</span><h2>最近的笔记</h2></div><span class="count">02 篇</span></div><div class="note-grid"><a class="note-card featured" href="roadmap.html"><span class="card-label">学习路线 <span>01</span></span><h3>从 KITTI 到 CARLA：我的自动驾驶感知学习路线</h3><p>用小数据集把投影、检测和 BEV 跑通，再逐步进入多传感器与仿真。</p><span class="read-more">阅读笔记 <span aria-hidden="true">↗</span></span></a><a class="note-card" href="calibration.html"><span class="card-label">基础概念 <span>02</span></span><h3>LiDAR 点如何投影到相机图像？</h3><p>把外参、内参和齐次坐标连成一条可检查的计算链。</p><span class="read-more">阅读笔记 <span aria-hidden="true">↗</span></span></a></div></section>
+    <section class="section resources-section" id="resources"><div class="wrap"><div class="section-title"><div><span class="section-kicker">02 / REFERENCE SHELF</span><h2>技术资料</h2></div><span class="count" id="resource-count"></span></div><p class="section-description">优先收录官方文档与项目源码。资源按实践用途整理，链接会随着学习持续更新。</p><div class="filters" role="group" aria-label="按主题筛选资源"><button type="button" class="selected" data-filter="all" aria-pressed="true">全部</button><button type="button" data-filter="datasets" aria-pressed="false">数据集</button><button type="button" data-filter="perception" aria-pressed="false">感知工具</button><button type="button" data-filter="simulation" aria-pressed="false">仿真与系统</button><button type="button" data-filter="courses" aria-pressed="false">课程</button></div><div class="resource-list" id="resource-list"></div></div></section>
+  </main>
+  <footer class="wrap footer"><span>© <span id="year">2026</span> Yang Xie · 持续学习，持续记录</span><a href="https://github.com/YALIAI" target="_blank" rel="noopener noreferrer">GitHub ↗</a></footer>
+  <script src="site.js" defer></script>
+</body>
+</html>
