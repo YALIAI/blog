@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="Notes from setting up Holo 3.1 locally with llama.cpp and OpenClaw as a practical coding agent.">
+  <title>Building a Local Coding Agent with Holo 3.1 and OpenClaw · Autonomous Driving Notes</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner"><a class="brand" href="./"><span class="brand-mark">YN<span class="brand-dot">.</span></span><span>Autonomous Driving Notes</span></a><nav aria-label="Main navigation"><a href="./">Home</a><a href="./#notes">Notes</a><a href="./#resources">Resources</a><a href="./#news">News</a></nav></div></header>
+<main class="article wrap">
+<a class="back-link" href="./#notes">← Back to notes</a>
+<span class="section-kicker">LOCAL AI / 03</span>
+<h1>Building a local coding agent with Holo 3.1 and OpenClaw</h1>
+<p class="meta">Yali Nie · September 28, 2026</p>
+<p class="lead">Tonight I turned a local Holo 3.1 model into a practical coding agent: llama.cpp serves the model, OpenClaw provides the agent and workspace tools, and a browser UI on my Mac reaches the Ubuntu machine through an SSH tunnel.</p>
+
+<h2>1. The local model stack</h2>
+<p>The model is <code>Hcompany/Holo-3.1-35B-A3B-GGUF:Q4_K_M</code>, served locally with llama.cpp. My workstation uses an NVIDIA RTX 4080 SUPER with 16 GB of VRAM. The goal was a useful local agent pipeline rather than full-GPU inference.</p>
+<pre><code>LLAMA_CACHE="$HOME/holo31/models" \
+./llama/llama-b11146/llama-server \
+  -hf Hcompany/Holo-3.1-35B-A3B-GGUF:Q4_K_M \
+  --host 127.0.0.1 \
+  --port 8080 \
+  --ctx-size 32768 \
+  --parallel 1 \
+  --image-min-tokens 1024</code></pre>
+<p>I increased the context to 32K after the initial 4K context was too small for the OpenClaw agent prompt.</p>
+
+<h2>2. Connecting Holo to OpenClaw</h2>
+<p>OpenClaw uses the local llama.cpp OpenAI-compatible endpoint as its primary model. This turns the model from a plain chat endpoint into an agent that can work with project files and tools inside a defined workspace.</p>
+<div class="callout"><p>I deliberately did not give the model full Ubuntu desktop control. For coding, project-level file and command access is much closer to what I actually need.</p></div>
+
+<h2>3. Browser-agent validation</h2>
+<p>I tested OpenClaw's dedicated headless Chrome with a strict hostname allowlist. Holo successfully inspected the Example Domain page, found its “Learn more” link, and reported the destination without clicking it. That verified that the agent could observe browser state through OpenClaw.</p>
+<p>The test also clarified the actual goal: not a model that controls the whole computer, but a local coding assistant that can understand a repository, edit files, run code, inspect errors, and iterate.</p>
+
+<h2>4. The workspace lesson</h2>
+<p>OpenClaw does not automatically use the shell's current directory as the agent workspace. My first coding test was launched from <code>~/holo31/test-project</code>, but Holo created <code>index.html</code> under <code>~/.openclaw/workspace</code>.</p>
+<p>I explicitly changed both the main agent and default workspace:</p>
+<pre><code>openclaw config set agents.entries.main.workspace \
+  '"/home/yxk/holo31/test-project"' --strict-json
+
+openclaw config set agents.defaults.workspace \
+  '"/home/yxk/holo31/test-project"' --strict-json</code></pre>
+<p>After that, Holo created a small portfolio website in the intended project, including <code>index.html</code> and <code>styles.css</code>, and verified the requested content.</p>
+
+<h2>5. Web UI from a Mac</h2>
+<p>The OpenClaw Gateway stays on localhost on the Ubuntu machine. Instead of exposing port 18789 publicly, I reach it from the Mac through an SSH tunnel:</p>
+<pre><code>ssh -N -L 18789:127.0.0.1:18789 yxk@192.168.31.75</code></pre>
+<p>The UI then appears on the Mac at <code>http://localhost:18789/</code>. Gateway authentication remains enabled. For access away from the local network, the same tunnel can use the Ubuntu machine's Tailscale address.</p>
+
+<h2>6. Keep the model manual</h2>
+<p>I do not want Holo to start automatically with Ubuntu. A 35B model consumes substantial memory and GPU resources, while the same workstation is also used for CARLA. The better workflow is to start the AI stack only when needed and stop it when those resources are needed elsewhere.</p>
+
+<h2>Result</h2>
+<pre><code>Mac browser
+    ↓ SSH tunnel
+OpenClaw Gateway on Ubuntu
+    ↓
+Holo 3.1 via llama.cpp
+    ↓
+Project workspace
+    ↓
+read files → edit code → run/verify → iterate</code></pre>
+<p>The next useful test is a real coding loop: give the agent a small Python or C++ project with a bug and see whether it can run it, diagnose the failure, edit the code, and rerun it until the test passes.</p>
+<hr>
+<p>Related: <a href="roadmap.html">From KITTI to CARLA: my perception learning path</a></p>
+</main>
+<footer class="wrap footer"><span>© <span id="year">2026</span> Yali Nie</span><a href="./">Home</a></footer>
+<script src="site.js" defer></script>
+</body>
+</html>
