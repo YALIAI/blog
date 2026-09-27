@@ -1,4 +1,6 @@
 const resources = [
+  {category:'reference',label:'Reference · Standard',title:'SAE J3016: Taxonomy and Definitions (2018)',description:'The June 2018 edition referenced in the Self-Driving Cars course: terminology and definitions for driving automation.',url:'https://www.sae.org/standards/content/j3016_201806/'},
+  {category:'reference',label:'Reference · Organization',title:'SAE International',description:'Official SAE website for mobility engineering standards, publications, and learning resources.',url:'https://www.sae.org/'},
   {category:'reference',label:'Reference · PDF',title:'SAE Levels of Driving Automation (0–5)',description:'Official SAE International visual chart (2021): driver responsibilities and feature capabilities at each level.',url:'https://www.sae.org/binaries/content/assets/cm/content/blog/sae-j3016-visual-chart_5.3.21.pdf'},
   {category:'datasets',label:'Dataset',title:'KITTI Vision Benchmark',description:'Camera, LiDAR, and calibration data for projection and 3D detection practice.',url:'https://www.cvlibs.net/datasets/kitti/'},
   {category:'datasets',label:'Dataset',title:'nuScenes devkit tutorial',description:'Explore multi-camera, LiDAR, and radar data; start with the mini split.',url:'https://www.nuscenes.org/tutorials/nuscenes_tutorial.html'},
