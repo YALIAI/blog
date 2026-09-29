@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101827">
+<meta name="description" content="Building and testing a Swedish learning PWA with local GPU speech recognition, original audio, and private Android access through Tailscale HTTPS.">
+<title>Swedish Learning App with Local GPU Speech Recognition · Yali Nie</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner"><a class="brand" href="./"><span class="brand-mark">YN<span class="brand-dot">.</span></span><span>Autonomous Driving Notes</span></a><nav aria-label="Main navigation"><a href="./">Home</a><a href="./#notes">Notes</a><a href="./#resources">Resources</a><a href="./#news">News</a></nav></div></header>
+<main class="article wrap">
+<a class="back-link" href="./#notes">← Back to notes</a>
+<span class="section-kicker">LOCAL AI / 04</span>
+<h1>Building a Swedish learning app with local GPU speech recognition</h1>
+<p class="meta">Yali Nie · September 29, 2026 · Development and Android test log</p>
+<p class="lead">Tonight I built and tested Svenska Dagligen, a personal Swedish learning prototype. The interface runs in a browser, recordings are analysed on my Ubuntu workstation, and an Android phone reaches the service through private Tailscale HTTPS. This note records the working configuration, the changes that made recording reliable, and the limits of the feedback.</p>
+<h2>1. The learning problem</h2>
+<p>I wanted help remembering vocabulary, understanding sentences, and practising Swedish reading. Long words, stress, reduced sounds, and vowel length are particularly difficult. The first prototype focuses on a short learning loop: listen, read aloud, replay the recording, and compare a speech transcript with the target text.</p>
+<p>The app has 26 vocabulary entries, meanings and example sentences, a simple spaced-review workflow, article saving, and passage-by-passage recording. Saved articles also show the full text so I can follow a lesson without losing the surrounding context.</p>
+<div class="callout"><p><strong>Current result:</strong> Swedish text-to-speech, microphone recording, audio replay, and local transcription were tested successfully on a Xiaomi Android phone. This is a browser/PWA prototype; no standalone APK was built tonight.</p></div>
+<h2>2. Three different audio functions</h2>
+<table><thead><tr><th>Function</th><th>Implementation</th><th>What it provides</th></tr></thead><tbody>
+<tr><td>Read text aloud</td><td>Browser SpeechSynthesis and an installed Swedish voice</td><td>Example sentences and full-article playback</td></tr>
+<tr><td>Play lesson audio</td><td>An attached MP3 and the browser audio player</td><td>The original recorded voice</td></tr>
+<tr><td>Recognise my recording</td><td>faster-whisper on the Ubuntu GPU server</td><td>A transcript and word comparison</td></tr>
+</tbody></table>
+<p>Changing the recognition model does not improve the synthetic reading voice. Likewise, pasting a lesson's text does not copy its original audio. A natural lesson recording and browser-generated speech are separate sources.</p>
+<h2>3. Architecture and files</h2>
+<p>The phone loads the interface over HTTPS. When I finish recording a passage, JavaScript sends a multipart POST to <code>/analyze</code> on the same origin. Tailscale Serve forwards that request to FastAPI on <code>127.0.0.1:8080</code>. The server decodes the audio, runs Swedish speech recognition, and returns JSON.</p>
+<table><thead><tr><th>File</th><th>Role</th></tr></thead><tbody>
+<tr><td><code>index.html</code>, <code>style.css</code>, <code>app.js</code></td><td>Mobile interface, study data, article controls, recording and feedback</td></tr>
+<tr><td><code>manifest.webmanifest</code>, <code>sw.js</code>, <code>icon.svg</code></td><td>PWA metadata and cached interface assets</td></tr>
+<tr><td><code>server.py</code></td><td>FastAPI transcription endpoint and static-file serving</td></tr>
+<tr><td><code>requirements-server.txt</code></td><td>Python dependency ranges</td></tr>
+</tbody></table>
+<p>Serving the interface and API from one origin avoids maintaining separate phone-side API addresses. The app uses <code>fetch('/analyze', ...)</code>; it does not ask the phone to contact its own localhost.</p>
+<h2>4. Workstation environment</h2>
+<table><thead><tr><th>Component</th><th>Tonight's setup</th></tr></thead><tbody>
+<tr><td>OS</td><td>Ubuntu 26.04 family</td></tr>
+<tr><td>GPU</td><td>RTX 4080-class GPU, 16 GB VRAM; nvidia-smi reported 16,376 MiB</td></tr>
+<tr><td>NVIDIA driver</td><td>595.91.07 in tonight's supplied output</td></tr>
+<tr><td>Driver CUDA compatibility</td><td>13.2 reported by nvidia-smi; this is not proof of an installed CUDA toolkit version</td></tr>
+<tr><td>Recognition runtime</td><td>faster-whisper / CTranslate2</td></tr>
+<tr><td>Device and compute settings</td><td><code>cuda</code>, <code>float16</code></td></tr>
+<tr><td>HTTP service</td><td>FastAPI + Uvicorn, port 8080 on loopback</td></tr>
+</tbody></table>
+<p>The GPU name was truncated in the shared terminal output, so this note does not use that output to decide between the RTX 4080 and 4080 SUPER suffix. Python and installed package versions were not fully captured tonight. The dependency file uses version ranges, so this is a configuration log rather than an exact environment lockfile.</p>
+<h2>5. From Whisper medium to KB-Whisper</h2>
+<p>The initial configuration used the multilingual Whisper medium model. The standalone load test eventually printed “model loaded successfully,” demonstrating that download and CUDA model construction completed. An unauthenticated Hugging Face warning appeared during loading; it was not itself a model-load failure.</p>
+<p>In one reading test, the recognised text resembled a video-closing phrase rather than the target sentence. That made it clear that transcription needed more testing. The project was then changed to use <a href="https://huggingface.co/KBLab/kb-whisper-large">KBLab/kb-whisper-large</a> as its default Swedish recognition model. An OpenAI API path was considered and briefly added during development, then removed in favour of the local workflow.</p>
+<p>Model selection comes from <code>SV_MODEL</code>. An old environment override such as <code>SV_MODEL=medium</code> still wins over the new default. To make the selected model explicit, use the startup command below and inspect <code>/health</code>.</p>
+<h2>6. Install, download and start</h2>
+<p>The workstation kept using the existing project directory below even as the app files were updated. Its “v4” directory name does not mean the running frontend must still be v4.</p>
+<pre><code>cd ~/Documents/svenska-dagligen-v4-local-gpu
+source .venv/bin/activate
+pip install -r requirements-server.txt
+sudo apt install ffmpeg
+
+python -u -c "from faster_whisper import WhisperModel; print('Loading KB-Whisper', flush=True); WhisperModel('KBLab/kb-whisper-large', device='cuda', compute_type='float16'); print('Model loaded', flush=True)"
+
+SV_MODEL=KBLab/kb-whisper-large SV_DEVICE=cuda SV_COMPUTE=float16 \
+uvicorn server:app --host 127.0.0.1 --port 8080</code></pre>
+<p>These commands assume the existing virtual environment. For a fresh checkout, create it first with a Python version supported by the installed dependencies:</p>
+<pre><code>python3 -m venv .venv
+source .venv/bin/activate</code></pre>
+<p>The first load may download model weights. Being able to reach the Hugging Face homepage only checks that endpoint; it does not prove every model-download endpoint is reachable. Keep the model cache when updating the app. At service startup the app can be available before the recognition model has loaded, because <code>server.py</code> creates the model lazily on the first analysis request.</p>
+<pre><code>curl http://127.0.0.1:8080/health
+nvidia-smi</code></pre>
+<div class="callout"><p><strong>Port collision with my previous project:</strong> the Holo/llama.cpp setup also uses port 8080. Stop that server before starting this app on 8080. If both are needed, choose another Uvicorn port and update the Tailscale Serve target to match.</p></div>
+<h2>7. Recording format and server processing</h2>
+<p>Earlier recordings sometimes failed both browser decoding and server analysis. One old client uploaded a blob under the filename <code>reading.wav</code>, but changing a filename alone does not convert audio into WAV. The revised recorder uses Web Audio to produce PCM WAV bytes.</p>
+<p>The server saves each upload temporarily, invokes FFmpeg to convert it to 16-kHz mono audio, and limits decoding to 30 seconds. Uploads are capped at 8 MiB. Reference text must contain between 1 and 300 characters; the app therefore splits articles into short passages.</p>
+<p>Recognition specifies Swedish, beam size 5, voice-activity filtering, and no conditioning on previous text. The response contains a transcript, the configured model name, time-stamped recognition segments, and a word alignment. Temporary uploaded and converted files are removed after the request.</p>
+<p>Browser-side rhythm feedback estimates voiced duration, reading pace and longer pauses from recording energy. Those measurements are useful for replay and practice, but they are not a pronunciation score.</p>
+<h2>8. Article reading and original audio</h2>
+<p>Saved articles show the full text above the passage practice card. Full-text synthetic reading queues short chunks in order. The active chunk is highlighted and scrolled into view; word highlighting depends on the browser delivering speech-boundary events.</p>
+<p>The v12 update added an MP3 picker to each article. Audio is stored in IndexedDB, while article text and learning progress use localStorage. That avoids trying to store multi-megabyte audio in localStorage. The original lesson MP3 could then be selected for natural playback instead of relying on the phone's synthetic voice.</p>
+<p><strong>Original MP3 playback does not yet have synchronised word highlighting.</strong> It has no matching word-time alignment in the current app. Browser TTS boundary events cannot be reused as timestamps for a different recording.</p>
+<p>Text, progress and attached audio are local to the browser and site origin. Articles saved on the Ubuntu localhost site do not automatically appear on the phone's Tailscale URL. Clearing site data removes these saved items. The source lesson recording is not published with this blog post.</p>
+<h2>9. Reach the app from Android with private HTTPS</h2>
+<p>Microphone access requires a secure browser context. A plain LAN address such as <code>http://192.168.x.x:8080</code> is not the same as the localhost development exception on the computer. I used Tailscale Serve for an HTTPS endpoint reachable within my tailnet.</p>
+<ol><li>Install Tailscale on the phone and sign in to the same tailnet as the Ubuntu workstation.</li><li>Turn on the phone's Tailscale connection.</li><li>Keep Uvicorn running in the first Ubuntu terminal.</li><li>In a second terminal, run the foreground Serve command:</li></ol>
+<pre><code>sudo tailscale serve http://127.0.0.1:8080</code></pre>
+<p>The first attempt said Serve was not enabled and printed an activation link. After enabling it through the Tailscale page, running the command again produced an HTTPS <code>*.ts.net</code> address and a proxy to the local service. Open the exact printed HTTPS address in Android Chrome.</p>
+<p>The published example intentionally omits my device hostname and tailnet identifier. This uses private Serve, not public Funnel. In foreground mode the Serve terminal must remain open; <code>Ctrl+C</code> ends it. I did not configure model auto-start tonight.</p>
+<h2>10. Fixing Swedish speech on a Xiaomi phone</h2>
+<p>The first Android test reported that no Swedish voice was available. The Xiaomi phone initially offered only its system speech engine and a few languages. I installed Google's Speech Recognition &amp; Synthesis app, selected the Google engine in the system text-to-speech settings, and checked its Swedish voice options.</p>
+<p>Restarting the phone resolved the issue in this test: the app then showed a Swedish <code>sv_SE</code> voice and could read text aloud. Settings names and available voices depend on the phone, OS and engine; this is the fix observed on my device rather than a universal guarantee.</p>
+<p>The app gets voices from the browser's <code>speechSynthesis.getVoices()</code> and handles <code>voiceschanged</code>. It does not contain its own Swedish TTS model. Recorded MP3 playback and server transcription do not require a Swedish TTS voice.</p>
+<h2>11. Diagnosing “local model unavailable”</h2>
+<p>The phone successfully recorded about nine seconds and displayed rhythm feedback, but then showed <code>Failed to fetch</code>. That message meant the browser had not received a usable response from the analysis request; it did not identify the recognition model as the cause.</p>
+<p>The initial Uvicorn log only showed GET requests for interface files. Those logs established that the page had been loaded, not that a later recording had reached <code>/analyze</code>. A normal Uvicorn access entry may also appear only after a request finishes.</p>
+<p>For a connection check, open the following on the phone, replacing the placeholder with the actual Serve hostname:</p>
+<pre><code>https://YOUR-SERVE-HOST.ts.net/analyze</code></pre>
+<p>A GET should return <code>405 Method Not Allowed</code>, because this endpoint expects POST. That is a useful reachability check, not a model execution test. On Ubuntu:</p>
+<pre><code>curl -i --max-time 10 http://127.0.0.1:8080/analyze
+sudo tailscale serve status
+tailscale status</code></pre>
+<p>In tonight's case the phone could not open the HTTPS endpoint. The cause was simple: <strong>Tailscale had been switched off on the phone.</strong> Turning it back on restored access, and the next recording was successfully recognised.</p>
+<div class="callout"><p>A cached PWA interface can still open, play local audio and record while its backend is unreachable. A working screen is therefore not proof that the model service is connected.</p></div>
+<h2>12. Normal use and installation</h2>
+<p>For the current workflow, three things must remain available: the phone's Tailscale connection, the Ubuntu Uvicorn process, and the Ubuntu Tailscale Serve process. The workstation also needs to remain awake.</p>
+<p>Chrome offers “Add to home screen” or “Install app” for compatible web apps. That is the immediate PWA installation route. Tonight's confirmed result was successful phone-browser recording and recognition; a standalone APK build and a completed home-screen installation were not separately verified.</p>
+<p>Wrapping the interface in an APK would not remove its dependence on the workstation model. Making analysis available with the computer turned off would require a different backend or an on-device model. A future manual launcher could reduce startup steps without loading a GPU model automatically at boot.</p>
+<h2>13. What the feedback can and cannot tell me</h2>
+<p>Words are aligned with edit distance so that one missing word does not make every later word look wrong. A red word means the transcript and target differ. It does not establish which phoneme was wrong, whether the vowel was too short, or whether Swedish word stress or pitch accent was correct.</p>
+<p>Recognition can normalise a learner's pronunciation into the intended word, or produce incorrect text from unclear audio. More accurate Swedish transcription is useful, but it is not evidence of validated pronunciation assessment. I still replay the recording and compare it with the lesson audio.</p>
+<h2>14. Verified status and next work</h2>
+<table><thead><tr><th>Item</th><th>Status at the end of tonight</th></tr></thead><tbody>
+<tr><td>Ubuntu service and CUDA model-load test</td><td>Working</td></tr>
+<tr><td>Swedish browser TTS on Xiaomi</td><td>Working after engine setup and phone restart</td></tr>
+<tr><td>Android recording and replay</td><td>Working</td></tr>
+<tr><td>Android → Tailscale HTTPS → local recognition</td><td>Working after restoring the phone's Tailscale connection</td></tr>
+<tr><td>Article MP3 attachment</td><td>Implemented in v12; full persistence testing remains</td></tr>
+<tr><td>Original-audio word synchronisation</td><td>Not implemented</td></tr>
+<tr><td>Phoneme, stress and vowel-length assessment</td><td>Not implemented or validated</td></tr>
+<tr><td>Standalone Android APK</td><td>Not built</td></tr>
+<tr><td>Cross-device article synchronisation</td><td>Not implemented</td></tr>
+</tbody></table>
+<p>Useful next changes are a visible backend connection indicator, a manual start/stop launcher, article export/import, and time alignment for original lesson audio. The next model task is to test recognition on a repeatable set of Swedish learner recordings before designing more detailed feedback.</p>
+<h2>References</h2>
+<ul><li><a href="https://github.com/SYSTRAN/faster-whisper">faster-whisper source and installation documentation</a></li>
+<li><a href="https://huggingface.co/KBLab/kb-whisper-large">KB-Whisper model card</a></li>
+<li><a href="https://tailscale.com/docs/reference/tailscale-cli/serve">Tailscale Serve CLI documentation</a></li>
+<li><a href="https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia">Microphone access and secure contexts</a></li>
+<li><a href="https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis">Browser SpeechSynthesis API</a></li></ul>
+<hr><p>Related: <a href="local-holo-openclaw.html">My local Holo 3.1 and OpenClaw setup</a></p></main>
+<footer class="wrap footer"><span>© <span id="year">2026</span> Yali Nie</span><a href="./">Home</a></footer>
+<script src="site.js" defer></script>
+</body></html>
