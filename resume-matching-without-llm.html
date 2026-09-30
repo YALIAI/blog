@@ -1,0 +1,65 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#101827"><meta name="description" content="A browser-only resume matching baseline using skill rules and TF-IDF, with reproducible code and evaluation notes."><title>Resume matching without an LLM · Yali Nie</title><link rel="stylesheet" href="style.css"></head><body><header class="site-header"><div class="wrap header-inner"><a class="brand" href="./"><span class="brand-mark">YN<span class="brand-dot">.</span></span><span>Autonomous Driving Notes</span></a><nav aria-label="Main navigation"><a href="./">Home</a><a href="./#notes">Notes</a><a href="./#resources">Resources</a><a href="./#news">News</a></nav></div></header><main class="article wrap">
+<a class="back-link" href="./#notes">← Back to notes</a>
+<span class="section-kicker">SOFTWARE PROJECT / 05</span>
+<h1>Evidence: matching resumes to jobs without a large language model</h1>
+<p class="meta">Yali Nie · September 30, 2026</p>
+<p class="lead">I built a lightweight first version of Evidence that retrieves resume evidence for job requirements entirely in the browser. It uses a skill dictionary, explicit rules and TF-IDF rather than a generative model. This creates a baseline to evaluate before adding semantic models or an LLM.</p>
+<p><a href="https://yaliai.github.io/evidence-recruitment/">Open the application</a> · <a href="https://github.com/YALIAI/evidence-recruitment">Source repository</a> · <a href="https://github.com/YALIAI/evidence-recruitment/commit/0ca3c155f5c9df6bcec2114d9fc61ef5e68cae45">Implementation snapshot</a></p>
+<h2>What this version does</h2>
+<p>Paste an English job description and up to six resume texts, then select <strong>Analyze resume evidence</strong>. The report lists extracted criteria, their required/preferred priority, the original job context, exact resume passages and a follow-up question. Reports can be exported as Markdown. A separate manual workspace supports editable criteria, candidate comparison, reviewer notes and CSV export.</p>
+<div class="callout"><p>This is resume-to-job matching and evidence-report generation. It does not generate or rewrite a resume, verify a candidate's competence, rank candidates or predict hiring probability.</p></div>
+<h2>Processing pipeline</h2>
+<ol>
+<li><strong>Split text:</strong> preserve resume passages while splitting at newlines and sentence boundaries.</li>
+<li><strong>Extract criteria:</strong> detect named skills using a curated alias dictionary. Required and preferred headings set priority. Lines without recognized skills may be retained as generic criteria.</li>
+<li><strong>Find direct mentions:</strong> use token boundaries to avoid matching Java inside JavaScript or C++ inside C#. Recognize aliases such as Ubuntu for Linux.</li>
+<li><strong>Check context:</strong> heuristic checks for terms such as “no”, “not”, “learning” and “course” prevent these passages from being treated as direct evidence.</li>
+<li><strong>Retrieve lexical hints:</strong> if no direct mention is found, TF-IDF cosine similarity retrieves a related passage from that candidate's resume.</li>
+<li><strong>Explain the result:</strong> display a fixed status, reason and template-based interview question. No generated claims are needed.</li>
+</ol>
+<h2>TF-IDF implementation</h2>
+<p>The current implementation is plain JavaScript in <code>src/matcher.mjs</code>. It removes a small English stop-word list, counts terms and computes document frequency across the supplied resume passages. Each term receives weight <code>(1 + ln(tf)) × (ln((N + 1)/(df + 1)) + 1)</code>. Cosine similarity compares the job context with each passage. Candidate-specific filtering prevents evidence from being borrowed from another resume.</p>
+<p>The retrieval threshold is currently <code>0.18</code>. It is an uncalibrated heuristic for showing related text, not a confidence level or a probability. A TF-IDF hit is always a verification hint; it never establishes qualification by itself.</p>
+<h2>Meaning of the report labels</h2>
+<ul>
+<li><strong>Direct skill mention:</strong> a named skill appears in an exact resume passage without a detected caution term. Depth, duration and the full job condition are still unverified.</li>
+<li><strong>Needs verification:</strong> a skill appears in limited, learning or negative context, or a passage has related wording.</li>
+<li><strong>No evidence found:</strong> neither a direct mention nor a sufficiently related passage was retrieved. Missing text does not establish lack of ability.</li>
+</ul>
+<p>For example, “Researched LiDAR denoising” does not establish multi-sensor fusion experience. “Learning Python in a course” is not treated as direct skill evidence. “Developed C++ modules on Ubuntu” can provide direct mentions for C++ and Linux.</p>
+<h2>Why this baseline is useful</h2>
+<p>The analysis needs no model download, API key, GPU or inference server. It runs in the browser and sends no resume or job text to a backend. The site still needs to load its static assets initially. Inputs and manual reviews remain in memory and clear on reload; export any work that should be retained.</p>
+<p>The implementation is inspectable: matching reasons and quotes can be traced to dictionary entries, rules and text retrieval. This makes it easier to identify whether an error comes from extraction, missing aliases, context checks or retrieval.</p>
+<h2>Files and reproducible commands</h2>
+<ul>
+<li><code>src/matcher.mjs</code>: dictionary, requirement extraction, TF-IDF and report construction.</li>
+<li><code>src/App.tsx</code>: input forms, local analysis action, evidence display and Markdown export.</li>
+<li><code>src/ReviewBoard.tsx</code>: separate manual review and CSV workflow.</li>
+<li><code>tests/matcher.test.mjs</code>: regression checks.</li>
+<li><code>docs/app.js</code>: prebuilt browser bundle; <code>docs/styles.css</code>: shared application styles.</li>
+</ul>
+<pre><code>git clone https://github.com/YALIAI/evidence-recruitment.git
+cd evidence-recruitment
+npm install
+node --test tests/matcher.test.mjs
+npm run build
+python3 -m http.server 8000 --directory docs</code></pre>
+<p>Use Node.js 22 or later and open <code>http://localhost:8000/</code>. GitHub Pages publishes the prebuilt <code>docs/</code> folder using the repository's workflow. Source changes must be accompanied by a rebuilt bundle.</p>
+<h2>Validation performed</h2>
+<p>Seven regression tests passed: aliases and exact quotations; LiDAR versus fusion; negative and learning context; skill boundaries; preferred headings and preserved context; lexical hints staying unverified; and consistent criteria with candidate-specific evidence. DOM interaction checks passed for text input, local analysis, report rendering and clearing stale reports after editing. Analysis did not call <code>fetch</code>. The production build and GitHub Pages deployment succeeded.</p>
+<p>These checks verify implementation behavior, not matching accuracy across real recruitment data. A full browser visual check was not completed because the test browser download failed.</p>
+<h2>Known limitations</h2>
+<ul>
+<li>English pasted text only; no PDF/DOCX extraction or OCR in this version.</li>
+<li>The dictionary is mainly technical, automotive and software-oriented.</li>
+<li>Negation and experience context are heuristic and can misclassify complex sentences.</li>
+<li>Several skills in one sentence are extracted separately. “Camera or LiDAR” does not become a fully modeled alternative condition.</li>
+<li>Years, overlapping work dates, proficiency, recency and implicit skills are not inferred.</li>
+<li>TF-IDF cannot reliably recognize paraphrases or distinguish related experience from sufficient experience.</li>
+<li>No automatic candidate rejection, ranking or calibrated match percentage is implemented.</li>
+</ul>
+<h2>Next experiment: evaluate before adding models</h2>
+<p>Create a manually reviewed set of job requirements and resume passages. Measure missed evidence, unsupported positive matches and the usefulness of retrieved passages. Preserve a separate test set. A small embedding model could then improve paraphrase retrieval; a cross-encoder could refine passage ordering. An LLM could later help interpret compound requirements and draft explanations, while exact quote validation remains in place.</p>
+<p>Embeddings, rerankers, an LLM backend and fine-tuning are future experiments, not capabilities of this release. The local rules-and-TF-IDF version stays useful as a reproducible comparison baseline.</p>
+<hr><p><a href="https://github.com/YALIAI/evidence-recruitment/blob/0ca3c155f5c9df6bcec2114d9fc61ef5e68cae45/src/matcher.mjs">Read the matching implementation</a> · <a href="https://github.com/YALIAI/evidence-recruitment/blob/0ca3c155f5c9df6bcec2114d9fc61ef5e68cae45/tests/matcher.test.mjs">Read the regression tests</a></p>
+</main><footer class="wrap footer"><span>© <span id="year">2026</span> Yali Nie</span><a href="./">Home</a></footer><script src="site.js" defer></script></body></html>
