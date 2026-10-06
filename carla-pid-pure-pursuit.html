@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="A reproducible CARLA 0.9.16 control demo using PID speed control, Pure Pursuit path tracking, a chase camera, Docker, and OBS automatic recording.">
+  <title>CARLA PID + Pure Pursuit simulation · Autonomous Driving Notes</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner"><a class="brand" href="./"><span class="brand-mark">YN<span class="brand-dot">.</span></span><span>Autonomous Driving Notes</span></a><nav aria-label="Main navigation"><a href="./">Home</a><a href="./#notes">Notes</a><a href="./#resources">Resources</a><a href="./#news">News</a></nav></div></header>
+<main class="article wrap">
+<a class="back-link" href="./#notes">← Back to notes</a>
+<span class="section-kicker">SIMULATION &amp; CONTROL / 06</span>
+<h1>CARLA 0.9.16: PID speed control and Pure Pursuit path tracking</h1>
+<p class="meta">Yali Nie · October 2026</p>
+<p class="lead">This experiment turns a basic CARLA vehicle into a closed-loop driving demo: generate a road route, regulate speed with PID, follow the route with Pure Pursuit, move the spectator camera with the ego vehicle, and automatically record the complete run with OBS.</p>
+
+<h2>Environment</h2>
+<ul>
+  <li>Ubuntu 26.04.1 host with NVIDIA RTX 4080 16 GB.</li>
+  <li>CARLA 0.9.16 server in Docker using <code>carlasim/carla:0.9.16</code>.</li>
+  <li>Separate persistent Python 3.10 client container with <code>carla==0.9.16</code>.</li>
+  <li>CARLA server and client use host networking; the client connects to <code>localhost:2000</code>.</li>
+  <li>Project directory on the host: <code>/home/yxk/carla-project</code>, mounted as <code>/project</code> in the client container.</li>
+</ul>
+
+<h2>1. Persistent CARLA server and Python client</h2>
+<p>The CARLA server is kept in a named container so it can be stopped and restarted without rebuilding the environment. The GUI is forwarded to the local XWayland display.</p>
+<pre><code>docker run \
+  --name carla-0916 \
+  --privileged \
+  --gpus all \
+  --net=host \
+  -e DISPLAY=:0 \
+  -e SDL_VIDEODRIVER=x11 \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  carlasim/carla:0.9.16 \
+  ./CarlaUE4.sh -windowed -ResX=1280 -ResY=720</code></pre>
+<p>The client is isolated in Python 3.10 because the CARLA 0.9.16 image contains Python API wheels for newer Python versions while its system Python is older.</p>
+<pre><code>docker run -it \
+  --name carla-client \
+  --network host \
+  -v ~/carla-project:/project \
+  python:3.10 bash
+
+pip install carla==0.9.16</code></pre>
+
+<h2>2. Route generation</h2>
+<p>The first route is intentionally simple. Starting from the road waypoint below the ego vehicle, the script repeatedly calls <code>waypoint.next(2.0)</code> and keeps the first available branch. With 400 waypoints and a 2 m step, the generated route is roughly 800 m long.</p>
+<pre><code>def generate_route(start_waypoint, num_points=400, step=2.0):
+    route = [start_waypoint]
+    current_waypoint = start_waypoint
+
+    for _ in range(num_points - 1):
+        next_waypoints = current_waypoint.next(step)
+        if not next_waypoints:
+            break
+        current_waypoint = next_waypoints[0]
+        route.append(current_waypoint)
+
+    return route</code></pre>
+<p>Green debug points visualize the route and a red point marks the current Pure Pursuit target. This is a local road-following route, not yet a global A-to-B planner.</p>
+
+<h2>3. Longitudinal PID control</h2>
+<p>The target speed is <code>8.0 m/s</code>, approximately 29 km/h. The controller uses proportional, integral and derivative terms, with integral clamping to reduce wind-up.</p>
+<pre><code>pid = PIDController(kp=0.50, ki=0.05, kd=0.10)
+
+acceleration = pid.run(target_speed, speed, dt)
+
+if acceleration &gt;= 0:
+    throttle = min(acceleration, 1.0)
+    brake = 0.0
+else:
+    throttle = 0.0
+    brake = min(-acceleration, 1.0)</code></pre>
+<p>During the completed run the vehicle settled close to the 8 m/s target, typically around 7.9–8.0 m/s.</p>
+
+<h2>4. Pure Pursuit lateral control</h2>
+<p>The lateral controller transforms the target waypoint into vehicle coordinates, computes the heading error <code>alpha</code>, and converts the Pure Pursuit steering angle into CARLA's normalized steering command.</p>
+<pre><code>lookahead = clamp(4.0 + 0.35 * speed, 4.0, 12.0)
+
+steering_angle = math.atan2(
+    2.0 * wheelbase * math.sin(alpha),
+    lookahead
+)
+
+steer = clamp(
+    steering_angle / max_steer_angle,
+    -1.0,
+    1.0
+)</code></pre>
+<p>The look-ahead distance grows with speed. At the 8 m/s cruising speed it is about 6.8 m. The target waypoint is selected using accumulated route distance rather than straight-line Euclidean distance.</p>
+
+<h2>5. Closed-loop route tracking</h2>
+<p>Each control iteration finds the closest route waypoint, computes the dynamic look-ahead distance, selects a target farther along the route, runs PID and Pure Pursuit, and sends one combined <code>VehicleControl</code> command.</p>
+<pre><code>while route_index &lt; len(route) - 2:
+    speed = get_speed(vehicle)
+
+    route_index = find_closest_waypoint_index(
+        vehicle, route, route_index
+    )
+
+    lookahead_distance = pure_pursuit.get_lookahead_distance(speed)
+
+    target_index, target_waypoint = find_target_waypoint(
+        vehicle, route, route_index, lookahead_distance
+    )
+
+    acceleration = pid.run(target_speed, speed, dt)
+    steer = pure_pursuit.run(
+        vehicle.get_transform(),
+        target_waypoint.transform.location,
+        speed
+    )
+
+    vehicle.apply_control(
+        carla.VehicleControl(
+            throttle=throttle,
+            steer=steer,
+            brake=brake
+        )
+    )</code></pre>
+<p>The fixed 500-step test loop was removed. The demo now continues until the route is nearly complete, then applies full brake. In the successful run the route index progressed from about 22 to 397 and the final target reached waypoint 399.</p>
+
+<h2>6. Spectator chase camera</h2>
+<p>The spectator is updated inside the control loop so the camera remains approximately 8 m behind and 4 m above the ego vehicle.</p>
+<pre><code>transform = vehicle.get_transform()
+forward = transform.get_forward_vector()
+
+camera_location = transform.location - forward * 8.0
+camera_location.z += 4.0
+
+spectator.set_transform(
+    carla.Transform(
+        camera_location,
+        carla.Rotation(
+            pitch=-15.0,
+            yaw=transform.rotation.yaw,
+            roll=0.0
+        )
+    )
+)</code></pre>
+
+<h2>7. Automatic OBS recording</h2>
+<p>OBS Studio 32.1 is connected through its WebSocket server on port <code>4455</code>. The Python client uses <code>obsws-python</code>. The password stays local and is not stored in this article.</p>
+<pre><code>pip install obsws-python</code></pre>
+<pre><code>obs_client = obs.ReqClient(
+    host="127.0.0.1",
+    port=4455,
+    password=OBS_PASSWORD,
+    timeout=3
+)
+
+obs_client.start_record()
+time.sleep(1.0)
+
+# driving loop
+
+vehicle.apply_control(
+    carla.VehicleControl(throttle=0.0, steer=0.0, brake=1.0)
+)
+
+time.sleep(1.0)
+obs_client.stop_record()</code></pre>
+<p>On Wayland, OBS uses <strong>Screen Capture (PipeWire)</strong>. Selecting the <code>CarlaUE4</code> window records only the simulator rather than the full desktop. The result is a hands-free workflow: run the Python demo, record the complete drive automatically, stop recording at the route end, and save the video.</p>
+
+<h2>What worked</h2>
+<ul>
+  <li>CARLA 0.9.16 server and Python 3.10 client communicate reliably through host networking.</li>
+  <li>PID holds the requested 8 m/s speed with small steady-state variation.</li>
+  <li>Pure Pursuit corrects the initial lateral error and follows straight and curved road segments.</li>
+  <li>Dynamic look-ahead increases from roughly 4 m at low speed to about 6.8 m at cruising speed.</li>
+  <li>The route index advances through the full 400-waypoint route instead of stopping after a fixed number of control iterations.</li>
+  <li>The spectator follows the ego vehicle continuously.</li>
+  <li>OBS can be started and stopped directly from the CARLA Python script.</li>
+</ul>
+
+<div class="callout"><p><strong>Current limitation:</strong> route generation chooses the first branch returned by CARLA at an intersection. The next planning step is to replace this with a real start-to-destination global route and then keep the same control pipeline for tracking it.</p></div>
+
+<h2>Shutdown and restart notes</h2>
+<p>The containers are persistent, so they can be stopped to release GPU and system memory without deleting the setup.</p>
+<pre><code>docker stop carla-client
+docker stop carla-0916</code></pre>
+<p>For the next session they can be restarted with:</p>
+<pre><code>docker start -ai carla-0916
+docker start -ai carla-client</code></pre>
+
+<hr>
+<p>Next: replace the temporary road-following route with a true A-to-B global route planner, then add sensors and perception to the simulation pipeline.</p>
+</main>
+<footer class="wrap footer"><span>© <span id="year">2026</span> Yali Nie</span><a href="./">Home</a></footer>
+<script src="site.js" defer></script>
+</body>
+</html>
