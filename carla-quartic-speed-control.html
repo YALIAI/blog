@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101827">
+<meta name="description" content="CARLA 0.9.16 Town04 experiment: quartic speed planning, PID control, Pure Pursuit route tracking, live speed plots and recorded video.">
+<title>CARLA Quartic Speed Planning · Autonomous Driving Notes</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site-header"><div class="wrap header-inner"><a class="brand" href="./"><span class="brand-mark">YN<span class="brand-dot">.</span></span><span>Autonomous Driving Notes</span></a><nav aria-label="Main navigation"><a href="./">Home</a><a href="./#notes">Notes</a><a href="./#resources">Resources</a><a href="./#news">News</a></nav></div></header>
+<main class="article wrap">
+<a class="back-link" href="./#notes">← Back to notes</a>
+<span class="section-kicker">SIMULATION &amp; CONTROL / 07 · WORK IN PROGRESS</span>
+<h1>From 0 to 50 km/h: quartic speed planning in CARLA</h1>
+<p class="meta">Yali Nie · October 14, 2026 · CARLA 0.9.16 / Town04</p>
+<p class="lead">A closed-loop driving experiment combining fourth-order polynomial velocity references, a longitudinal PID controller, Pure Pursuit lateral tracking, a real-time driving HUD, and video capture. The current focus is understanding speed-tracking oscillations during braking—not claiming production-ready control.</p>
+
+<div class="callout"><p><strong>Watch the recorded experiment:</strong> <a href="https://github.com/user-attachments/assets/3cb8e201-d9b9-442d-829f-e067d546a0cb" target="_blank" rel="noopener noreferrer">CARLA Town04 driving demo ↗</a> (28.55 s; 1280×720, 20 FPS). The recording includes the camera, HUD, and reference/actual speed plot.</p></div>
+
+<h2>System at a glance</h2>
+<table><thead><tr><th>Component</th><th>Implementation</th></tr></thead><tbody>
+<tr><td>Simulation</td><td>CARLA 0.9.16, Town04</td></tr>
+<tr><td>Longitudinal planning</td><td>ACCEL → CRUISE → BRAKE, quartic reference for acceleration and deceleration</td></tr>
+<tr><td>Longitudinal control</td><td>PID to throttle/brake, with anti-windup adjustments</td></tr>
+<tr><td>Lateral control</td><td>Pure Pursuit route tracking, speed-dependent lookahead</td></tr>
+<tr><td>Tracking diagnostic</td><td>Signed lateral error from a vehicle reference point to the planned route</td></tr>
+<tr><td>Observability</td><td>RGB camera, Pygame HUD, actual/reference speed curves, MP4 recording</td></tr>
+</tbody></table>
+
+<h2>1. Quartic reference-speed profile</h2>
+<p>With normalized time <code>s = clamp(t/T, 0, 1)</code>, the reference is:</p>
+<pre><code>v_ref = v0 + (v1 - v0) * (4*s**3 - 3*s**4)</code></pre>
+<p>The profile changes speed smoothly with zero acceleration at each segment endpoint. Acceleration targets 50 km/h (13.89 m/s), followed by cruising and quartic deceleration to zero. Safety overrides can change the command away from the nominal polynomial when stopping constraints require it.</p>
+<p>For braking from speed <code>v0</code> to zero, the analytically integrated distance is <code>D = 0.4 * v0 * T</code>. We found and corrected a previous implementation that used <code>0.8 * v0 * T</code>, overestimating the planned braking distance and triggering deceleration too early.</p>
+
+<h2>2. Longitudinal PID + lateral Pure Pursuit</h2>
+<p>The PID controller converts speed error to throttle or brake commands. The controller includes an integral term and anti-windup logic, though separate P/I/D contribution logging is not yet available to verify the integrator’s behavior under braking saturation.</p>
+<p>Pure Pursuit computes steering from a lookahead target on the route. The HUD displays a signed lateral deviation relative to the planned route. This is a useful tracking diagnostic, but the vehicle center-of-gravity reference remains an approximation rather than a calibrated physical CoG measurement.</p>
+
+<h2>3. Video observations and unresolved questions</h2>
+<p>The recording shows the vehicle accelerate toward approximately 48 km/h, then decelerate. The two HUD curves are <strong>reference speed</strong> and <strong>actual vehicle speed</strong>—not front/rear axle speeds.</p>
+<table><thead><tr><th>Moment</th><th>Observation</th></tr></thead><tbody>
+<tr><td>Start</td><td>Vehicle initially stationary</td></tr>
+<tr><td>Acceleration / cruise</td><td>Measured speed approaches roughly 48 km/h</td></tr>
+<tr><td>About 25 s</td><td>Reference speed ~41.4 km/h, actual ~28 km/h, displayed throttle 100%</td></tr>
+<tr><td>Final seconds</td><td>Vehicle slows toward zero; braking command appears in the HUD</td></tr>
+</tbody></table>
+<p>The large fluctuations in measured speed during deceleration require further investigation. Candidate explanations include PID tuning, throttle/brake switching, and changing reference limits. <strong>Wheel lock-up cannot be established from this recording.</strong> We have not logged individual wheel angular velocities or slip ratios, and CARLA’s built-in tire dynamics should not be presented as a validated high-fidelity tire model.</p>
+<p>In an earlier run, the vehicle stopped with about 45 m of route remaining because its time-based braking reference reached zero ahead of its spatial destination. The distance integration was corrected and a low-speed recovery mode was introduced, but this revised behavior still requires a fresh end-to-end test.</p>
+
+<h2>4. What comes next</h2>
+<ul>
+<li>Validate the full 0 → 50 → 0 km/h cycle and stopping-point accuracy.</li>
+<li>Log the individual PID P, I and D contributions, and control saturation flags.</li>
+<li>Measure reference-speed tracking MAE, RMSE and maximum error.</li>
+<li>Measure signed lateral-error RMSE and maximum absolute deviation.</li>
+<li>Investigate wheel slip only if suitable wheel-speed data becomes accessible.</li>
+<li>Publish an updated driving video after closed-loop braking is stabilized.</li>
+</ul>
+<div class="callout"><p><strong>Development note:</strong> This is a learning and engineering experiment. Features are implemented, but the latest quartic-braking fixes and final stopping accuracy are still being evaluated in CARLA.</p></div>
+
+<p>For the full mathematical derivation and debugging history, see the <a href="https://github.com/YALIAI/blog/blob/main/carla/town04-quartic-speed-pid-pure-pursuit.md" target="_blank" rel="noopener noreferrer">extended technical notes on GitHub ↗</a>. For the earlier 8 m/s PID/Pure Pursuit prototype, see the <a href="carla-pid-pure-pursuit.html">previous CARLA experiment</a>.</p>
+</main>
+<footer class="wrap footer"><span>© <span id="year">2026</span> Yali Nie</span><a href="./">Home</a></footer>
+<script src="site.js" defer></script>
+</body>
+</html>
