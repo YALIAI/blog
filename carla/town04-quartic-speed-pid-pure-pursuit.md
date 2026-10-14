@@ -71,7 +71,7 @@ The Pygame HUD integrates:
 - **Reference Speed vs Actual Speed** rolling graph (km/h).
 - MP4 recording of the combined view.
 
-**Demo video:** _Pending upload; insert video or link here._
+**Demo video:** A 28.55-second MP4 (1280×720, 20 FPS) has been captured and reviewed. **Public hosting/link pending.**
 
 ## 5. Observations and debugging history
 
@@ -85,6 +85,21 @@ Several issues were observed and investigated:
 - **Stopped about 45.2 m short while BRAKE continued:** the time-based speed reference reached zero before the remaining route distance; investigation identified the erroneous quartic distance coefficient above. The latest correction has **not yet been confirmed by a new driving log**.
 
 These observations should not be treated as proof of stable 50 km/h tracking or successful quartic braking.
+
+### Video review — 2026-10-14
+
+A recorded 28.55-second run was reviewed at multiple timestamps:
+
+| Approx. timestamp | HUD observation |
+|---|---|
+| 1 s | Vehicle stationary, speed 0 km/h |
+| 10–20 s | Vehicle reaches approximately 48 km/h; speed reference approaches/holds 50 km/h |
+| 25 s | Actual speed ~28 km/h, target speed ~41.4 km/h, throttle displayed at 100%; measured speed curve shows pronounced spikes during deceleration |
+| 28 s | Actual speed ~4 km/h, target speed 0 km/h; brake command displayed |
+
+The two plotted traces are **reference speed** and **measured vehicle speed**, not front/rear axle speeds. The oscillations and large tracking discrepancy during braking warrant further investigation of PID components, throttle/brake switching and any reference override. Wheel lock-up **cannot** be inferred from the video alone; wheel angular velocities/slip ratios are not logged.
+
+The video is not yet publicly hosted, so no fabricated link is included.
 
 ## 6. Validation plan
 
