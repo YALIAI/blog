@@ -71,7 +71,7 @@ The Pygame HUD integrates:
 - **Reference Speed vs Actual Speed** rolling graph (km/h).
 - MP4 recording of the combined view.
 
-**Demo video:** A 28.55-second MP4 (1280×720, 20 FPS) has been captured and reviewed. **Public hosting/link pending.**
+**Demo video:** [Watch the CARLA driving demo](https://github.com/user-attachments/assets/3cb8e201-d9b9-442d-829f-e067d546a0cb) (28.55 seconds, 1280×720, 20 FPS).
 
 ## 5. Observations and debugging history
 
@@ -99,7 +99,7 @@ A recorded 28.55-second run was reviewed at multiple timestamps:
 
 The two plotted traces are **reference speed** and **measured vehicle speed**, not front/rear axle speeds. The oscillations and large tracking discrepancy during braking warrant further investigation of PID components, throttle/brake switching and any reference override. Wheel lock-up **cannot** be inferred from the video alone; wheel angular velocities/slip ratios are not logged.
 
-The video is not yet publicly hosted, so no fabricated link is included.
+The recorded demo is available here: [CARLA driving demo video](https://github.com/user-attachments/assets/3cb8e201-d9b9-442d-829f-e067d546a0cb).
 
 ## 6. Validation plan
 
